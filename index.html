@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Інтерактивна таблиця — баланс реакції + вектори (fixed layout)</title>
+
+<style>
+  :root{ --accent:#2a9df4; --pos:#1e6ed1; --neg:#e85d5d; --border:#9aa; --bg-react:#eef7ff; --bg-prod:#fff3f3; }
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body{background:#f6f9fc; margin:0; padding:0; font-family:Arial, sans-serif; color:#222;}
+  .chem-wrap{ max-width:1200px; width:calc(100% - 32px); margin:24px auto; background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.08); overflow:hidden; }
+  .title{text-align:center; font-weight:700; margin-bottom:6px; font-size:20px;}
+  .eq{ text-align:center; margin-bottom:12px; font-size:18px;}
+  .formula-box{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; align-items:center; margin-bottom:8px;}
+  .formula-part{display:inline-flex; align-items:center; gap:6px; font-weight:600;}
+  .controls-row{display:flex; gap:12px; align-items:center; justify-content:center; margin-bottom:12px; flex-wrap:wrap;}
+  .layout{ display:grid; grid-template-columns: 1fr minmax(320px, 520px); gap:16px; align-items:start; }
+  @media (max-width:1100px){ .layout{grid-template-columns:1fr;} }
+  table.chem{border-collapse:collapse; width:100%;}
+  table.chem caption{caption-side:top; font-weight:700; margin-bottom:8px; text-align:left;}
+  table.chem th, table.chem td{border:1px solid var(--border); padding:6px; text-align:center; min-width:46px; background:#fff; vertical-align:middle;}
+  table.chem th{background:#e6f0fb; font-weight:700;}
+  .elem-cell{background:#fafafa; font-weight:600;}
+  input.num{width:100%; border:0; text-align:center; font-size:14px; padding:4px; background:transparent;}
+  input.num:focus{outline:1px solid var(--accent); background:#eef7ff;}
+  .coef{width:56px; padding:6px; text-align:center; border-radius:6px; border:1px solid #d7eafb; background:#f8fbff;}
+  .coef-row th{background:#f4f8ff;}
+  .mol-header{display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center;}
+  .mol-name{font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100px;}
+  .mol-name.reactant{ color: var(--pos); }
+  .mol-name.product{ color: var(--neg); }
+  .group-reactants{ background: linear-gradient(180deg,var(--bg-react),#f7fbff); color:var(--pos); }
+  .group-products{ background: linear-gradient(180deg,var(--bg-prod),#fff7f7); color:var(--neg); }
+  .rp-cell{min-height:36px; min-width:64px; display:flex; align-items:center; justify-content:center; background:#fff; transition:color 0.15s, background 0.15s;}
+  .rp-zero{color:#333;}
+  .rp-pos{color:var(--pos); font-weight:700;}
+  .rp-neg{color:var(--neg); font-weight:700;}
+  .note{font-size:13px; color:#555; text-align:center; margin-top:8px;}
+  .mol-fallback{opacity:0.7; font-style:italic;}
+  .rp-header{ white-space:nowrap; vertical-align:middle; }
+
+  .vector-panel{ background:#fff; border:1px solid #e2eefc; border-radius:10px; padding:8px; max-width:100%; overflow:hidden; }
+  .vector-title{font-weight:700; font-size:15px; margin-bottom:8px; text-align:center;}
+  .vector-svg{ width:100%; height:auto; display:block; background:linear-gradient(180deg,#fbfeff,#f7fbff); border-radius:8px; border:1px solid #e6f7ff; max-width:100%; overflow:hidden; }
+
+  .axis-labels{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 6px 6px 6px; margin-bottom:6px;}
+  .axis-labels .axis-box{display:flex; flex-direction:column; align-items:center;}
+  .axis-labels .axis-box .axis-title{font-weight:700; font-size:12px; color:#334;}
+  .vector-legend{font-size:13px; margin-top:8px; color:#444; text-align:left;}
+  .method-def{font-size:13px; margin-top:10px; color:#333; background:#fbfdff; padding:8px; border-radius:6px; border:1px solid #eef6ff;}
+  .method-def b{color:#112;}
+  .axis-selectors{display:flex; gap:8px; justify-content:center; align-items:center; margin-bottom:8px; flex-wrap:wrap;}
+  .axis-selectors label{font-size:13px; color:#333;}
+  .order-selectors{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+
+  .mapping-note-inline{font-size:14px; color:#2b4758; margin-top:8px; padding:6px 8px; background:#f7fbff; border-radius:6px; border:1px solid #e1f0ff; text-align:left; white-space:normal; line-height:1.3;}
+  @media (max-width:880px){ .coef{width:48px;} table.chem th, table.chem td{font-size:13px; padding:6px;} .formula-box{font-size:15px;} }
+
+  .svg-axis-label { font-family: Arial, sans-serif; font-size:16px; fill:#246; }
+  .svg-tick { stroke:#79a9d9; stroke-width:1; }
+
+  .legend-inline{display:flex; gap:10px; align-items:center; font-size:13px;}
+  .legend-dot{width:12px; height:12px; border-radius:6px; display:inline-block; margin-right:6px;}
+  .legend-react{ background:#5da0e8; }
+  .legend-prod{ background:#e85d5d; }
+
+  /* --- Styles for axis placeholder cells: variant 1 (dot background) --- */
+  .axis-cell{
+    width:48px;
+    min-width:44px;
+    padding:6px 4px;
+    background-color:transparent;
+    vertical-align:middle;
+    text-align:center;
+    /* subtle dot grid to visually fill the empty cell */
+    background-image:
+      radial-gradient(circle at 1px 1px, #d9eefe 1.2px, rgba(0,0,0,0) 1.6px);
+    background-size:14px 14px;
+    background-repeat:repeat;
+    border-color: #dfeaf5;
+    color: #7b8f9f;
+  }
+  /* small decorative dot (optional, subtle) */
+  .axis-cell::after{
+    content: "";
+    display:block;
+    width:6px;
+    height:6px;
+    margin: 6px auto 0;
+    border-radius:50%;
+    background:#e6f2fb;
+    opacity:0.7;
+  }
+
+  /* Make axis selects compact */
+  select[data-axis]{
+    padding:4px 6px;
+    font-size:13px;
+    border-radius:6px;
+  }
+
+  /* Tighter header cell padding where axes sit */
+  thead tr#axesSelectorsRow th{
+    padding:6px 8px;
+    vertical-align:middle;
+  }
+</style>
+</head>
+<body>
+
+<div class="chem-wrap">
+  <div class="title">Інтерактивна таблиця — баланс реакції + вектори</div>
+
+  <div class="eq" aria-live="polite">
+    <div class="formula-box" id="equation"></div>
+    <div style="font-size:13px; color:#444;">(Реактанти ліворуч — Продукти справа)</div>
+  </div>
+
+  <div class="controls-row">
+    <div class="order-selectors" id="orderSelectors">
+      <label style="font-size:13px;color:#333;">Порядок R:</label>
+      <select id="orderR" style="padding:4px;font-size:13px;">
+        <option value="auto">auto (↑ by size)</option>
+        <option value="asc">asc (by size)</option>
+        <option value="desc">desc (by size)</option>
+        <option value="none">none (as is)</option>
+      </select>
+      <label style="font-size:13px;color:#333;">Порядок P:</label>
+      <select id="orderP" style="padding:4px;font-size:13px;">
+        <option value="auto">auto (↓ by size)</option>
+        <option value="asc">asc (by size)</option>
+        <option value="desc">desc (by size)</option>
+        <option value="none">none (as is)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div>
+      <table class="chem" id="mainTable" aria-label="Таблиця елементів і молекул">
+        <caption>Таблиця атомних індексів (реактанти — ліворуч, продукти — праворуч). Коефіцієнти винесені рядком під назвами молекул.</caption>
+        <thead>
+          <tr>
+            <th scope="col" rowspan="3">Елемент</th>
+            <th scope="col" colspan="2">Осі</th>
+            <th scope="col" colspan="3" class="group-reactants">Реактанти</th>
+            <th scope="col" rowspan="3" class="rp-header">R − P</th>
+            <th scope="col" colspan="5" class="group-products">Продукти</th>
+          </tr>
+          <tr id="axesSelectorsRow"></tr>
+          <tr id="moleculeCoefs" class="coef-row"></tr>
+        </thead>
+        <tbody id="elementsBody"></tbody>
+      </table>
+
+      <div class="note">Тут: рядок коефіцієнтів — для кількості молекул; основна таблиця — індекси атомів. Якщо коефіцієнт 0 — молекулу не показуємо; 1 — цифру 1 не показуємо.</div>
+    </div>
+
+    <div class="vector-panel" aria-label="Панель векторів">
+      <div class="vector-title">Координатна сітка — векторні шляхи реагантів і продуктів</div>
+
+      <svg id="vectorSvg" class="vector-svg" viewBox="0 0 520 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Координатна сітка"></svg>
+
+      <div style="margin-top:8px;">
+        <div class="legend-inline"><span class="legend-dot legend-react"></span>Реактивний шлях (R)</div>
+        <div class="legend-inline" style="margin-top:4px;"><span class="legend-dot legend-prod"></span>Продуктовий шлях (P)</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;">
+    <div class="vector-legend" id="vectorLegend">
+      Візуалізація показує кумулятивні шляхи: реактанти (синій, R) і продукти (червоний, P). Кожний сегмент — окрема молекула.
+    </div>
+
+    <div class="method-def" id="methodDef" aria-live="polite" style="margin-top:10px;">
+      <b>Формальні правила (мікро‑справка):</b>
+      <ol>
+        <li><b>Вектор молекули</b>: v = (nₓ, nᵧ), де nₓ,nᵧ — кількості атомів вибраних елементів у молекулі. Коефіцієнт k означає, що цей вектор повторюється k разів (кожна молекула — окремий сегмент).</li>
+        <li><b>Шлях</b>: впорядкована сума векторів молекул; сортування молекул впливає на форму шляху (керуйте у селектах поряд).</li>
+        <li><b>Початкова точка</b>: (0,0) — внизу зліва на графіку.</li>
+        <li><b>Баланс</b>: реакція збалансована ⇔ векторна сума реагентів = векторна сума продуктів (кінцеві точки шляхів збігаються).</li>
+        <li><b>Проєкція</b>: вибір осей — це 2D‑проєкція балансу; збіг у 2D не гарантує повного балансу у ℝⁿ.</li>
+      </ol>
+    </div>
+
+    <div class="mapping-note-inline" id="mappingNote" aria-hidden="false" style="margin-top:8px;"></div>
+  </div>
+
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const elements = ["H","C","O","N","P","S","F","Na","Ca"];
+  const reactants = [
+    {id:"h2o", label:"H2O"},
+    {id:"co2", label:"CO2"},
+    {id:"o2",  label:"O2"}
+  ];
+  const products = [
+    {id:"h2",   label:"H2"},
+    {id:"o3",   label:"O3"},
+    {id:"h2co3",label:"H2CO3"},
+    {id:"n2",   label:"N2"},
+    {id:"nh3",  label:"NH3"}
+  ];
+
+  const MAX_COEF = 100;
+  const MIN_AXIS_SPAN = 10;
+  const VISUAL_OFFSET_PX = 2;
+  const STORAGE_KEY = 'chem_balancer_state_v1';
+  const defaultIndexMap = {
+    h2o: {H:2,O:1},
+    co2: {C:1,O:2},
+    o2:  {O:2},
+    h2:  {H:2},
+    o3:  {O:3},
+    h2co3:{H:2,C:1,O:3},
+    n2:  {N:2},
+    nh3: {N:1,H:3}
+  };
+  const warnedMissingMol = new Set();
+
+  const axesSelectorsRow = document.getElementById("axesSelectorsRow");
+  const coefsRow = document.getElementById("moleculeCoefs");
+
+  function buildTableHeaderCells(){
+    axesSelectorsRow.innerHTML = "";
+    coefsRow.innerHTML = "";
+	const thEmptyX = document.createElement("th"); 
+    thEmptyX.setAttribute("scope","col");
+    coefsRow.appendChild(thEmptyX);
+    const thEmptyY = document.createElement("th"); 
+    thEmptyY. setAttribute("scope","col");
+    coefsRow.appendChild(thEmptyY);
+    const thX = document.createElement("th"); thX.setAttribute("scope","col"); thX.innerHTML = `<label style="font-size:12px">X</label><select data-axis="x" aria-label="Оберіть ось X"></select>`;
+    const thY = document.createElement("th"); thY.setAttribute("scope","col"); thY.innerHTML = `<label style="font-size:12px">Y</label><select data-axis="y" aria-label="Оберіть ось Y"></select>`;
+    axesSelectorsRow.appendChild(thX); axesSelectorsRow.appendChild(thY);
+    reactants.forEach(m => {
+      const th = document.createElement("th"); th.setAttribute("scope","col");
+      th.innerHTML = `<div class="mol-header"><div class="mol-name reactant" data-mol="${m.id}" id="name_${m.id}" title="${m.label}">${m.label}</div></div>`;
+      axesSelectorsRow.appendChild(th);
+      const thcoef = document.createElement("th"); thcoef.setAttribute("scope","col"); thcoef.innerHTML = `<input class="coef" aria-label="Коефіцієнт ${m.label}" data-mol="${m.id}" type="number" min="0" max="${MAX_COEF}" step="1" value="1">`;
+      coefsRow.appendChild(thcoef);
+    });
+    products.forEach(m => {
+      const th = document.createElement("th"); th.setAttribute("scope","col");
+      th.innerHTML = `<div class="mol-header"><div class="mol-name product" data-mol="${m.id}" id="name_${m.id}" title="${m.label}">${m.label}</div></div>`;
+      axesSelectorsRow.appendChild(th);
+      const thcoef = document.createElement("th"); thcoef.setAttribute("scope","col"); thcoef.innerHTML = `<input class="coef" aria-label="Коефіцієнт ${m.label}" data-mol="${m.id}" type="number" min="0" max="${MAX_COEF}" step="1" value="1">`;
+      coefsRow.appendChild(thcoef);
+    });
+
+    const selX = document.querySelector('select[data-axis="x"]');
+    const selY = document.querySelector('select[data-axis="y"]');
+    if(selX && selY){
+      selX.innerHTML = ""; selY.innerHTML = "";
+      elements.forEach((el, idx) => {
+        const o1 = document.createElement('option'); o1.value = el; o1.textContent = el;
+        const o2 = document.createElement('option'); o2.value = el; o2.textContent = el;
+        if(idx === 0) o1.selected = true;
+        if(idx === 1) o2.selected = true;
+        selX.appendChild(o1); selY.appendChild(o2);
+      });
+      selX.addEventListener('change', () => {
+        if(selX.value === selY.value){
+          for(const el of elements) if(el !== selX.value){ selY.value = el; break; }
+        }
+        drawVectors();
+      });
+      selY.addEventListener('change', () => {
+        if(selY.value === selX.value){
+          for(const el of elements) if(el !== selY.value){ selX.value = el; break; }
+        }
+        drawVectors();
+      });
+    }
+  }
+
+  buildTableHeaderCells();
+
+  const body = document.getElementById("elementsBody");
+  body.innerHTML = "";
+  elements.forEach((elem) => {
+    const tr = document.createElement("tr");
+    const tdElem = document.createElement("td"); tdElem.className = "elem-cell"; tdElem.textContent = elem; tr.appendChild(tdElem);
+    const tdAx = document.createElement("td"); tdAx.className = "axis-cell"; tdAx.textContent = ""; tr.appendChild(tdAx);
+    const tdAy = document.createElement("td"); tdAy.className = "axis-cell"; tdAy.textContent = ""; tr.appendChild(tdAy);
+    reactants.forEach(m => {
+      const td = document.createElement("td");
+      td.innerHTML = `<input class="num cell left" data-mol="${m.id}" data-elem="${elem}" type="number" value="${defaultIndex(m.id, elem)}" min="0" step="1" aria-label="Індекс ${elem} у ${m.label}">`;
+      tr.appendChild(td);
+    });
+    const rpTd = document.createElement("td"); rpTd.className = "rp-cell"; rpTd.id = `rp_${elem}`; rpTd.textContent = "0"; tr.appendChild(rpTd);
+    products.forEach(m => {
+      const td = document.createElement("td");
+      td.innerHTML = `<input class="num cell right" data-mol="${m.id}" data-elem="${elem}" type="number" value="${defaultIndex(m.id, elem)}" min="0" step="1" aria-label="Індекс ${elem} у ${m.label}">`;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+
+  function defaultIndex(mol, elem){
+    if(!defaultIndexMap[mol]){
+      if(!warnedMissingMol.has(mol)){
+        console.warn(`defaultIndex: немає запису для молекули ${mol} у defaultIndexMap — повертаю 0`);
+        warnedMissingMol.add(mol);
+      }
+      return 0;
+    }
+    return (defaultIndexMap[mol][elem]) ? defaultIndexMap[mol][elem] : 0;
+  }
+
+  function qAll(selector){ return Array.from(document.querySelectorAll(selector)); }
+  function q(selector){ return document.querySelector(selector); }
+
+  function buildFormulaHTML(molId){
+    const parts = [];
+    elements.forEach(el => {
+      const input = document.querySelector(`.cell[data-mol="${molId}"][data-elem="${el}"]`);
+      const val = input ? Number(input.value) || 0 : 0;
+      if(val > 0) parts.push(el + (val > 1 ? `${val}` : ""));
+    });
+    return parts.length ? parts.join("") : `<span class="mol-fallback">${molId}</span>`;
+  }
+
+  function updateDifference(){
+    elements.forEach(elem => {
+      let leftSum = 0;
+      qAll(`.left[data-elem="${elem}"]`).forEach(input => {
+        const molId = input.dataset.mol;
+        const coefInput = q(`.coef[data-mol="${molId}"]`);
+        const coef = coefInput ? Math.max(0, Math.min(MAX_COEF, Math.floor(Number(coefInput.value) || 0))) : 0;
+        leftSum += (Number(input.value) || 0) * coef;
+      });
+      let rightSum = 0;
+      qAll(`.right[data-elem="${elem}"]`).forEach(input => {
+        const molId = input.dataset.mol;
+        const coefInput = q(`.coef[data-mol="${molId}"]`);
+        const coef = coefInput ? Math.max(0, Math.min(MAX_COEF, Math.floor(Number(coefInput.value) || 0))) : 0;
+        rightSum += (Number(input.value) || 0) * coef;
+      });
+      const diff = leftSum - rightSum;
+      const cell = document.getElementById(`rp_${elem}`);
+      if(!cell) return;
+      cell.textContent = diff;
+      cell.classList.remove("rp-pos","rp-neg","rp-zero");
+      if(diff > 0) cell.classList.add("rp-pos");
+      else if(diff < 0) cell.classList.add("rp-neg");
+      else cell.classList.add("rp-zero");
+    });
+  }
+
+  const svg = document.getElementById("vectorSvg");
+  svg.setAttribute('overflow','hidden');
+  const svgSize = 520;
+  const padding = 100;
+  const mappingNoteEl = document.getElementById('mappingNote');
+
+  function niceStep(range, targetTicks = 6){
+    if(range <= 0) return 1;
+    const raw = range / targetTicks;
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    const candidates = [1,2,5,10].map(m => m * pow);
+    for(const c of candidates){
+      if(c >= raw) return c;
+    }
+    return candidates[candidates.length - 1];
+  }
+
+  function moleculeSize(mol){
+    let s = 0;
+    elements.forEach(el => {
+      const input = q(`.cell[data-mol="${mol.id}"][data-elem="${el}"]`);
+      const val = input ? Math.max(0, Math.floor(Number(input.value) || 0)) : 0;
+      s += val;
+    });
+    return s;
+  }
+
+  function collectState(){
+    const state = { coeffs: {}, cells: {}, axes: {}, orderR: null, orderP: null, axisSelects: {} };
+    qAll('.coef').forEach(inp => {
+      const mol = inp.dataset.mol;
+      state.coeffs[mol] = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(inp.value) || 0)));
+    });
+    qAll('.cell').forEach(inp => {
+      const mol = inp.dataset.mol;
+      const el = inp.dataset.elem;
+      if(!state.cells[mol]) state.cells[mol] = {};
+      state.cells[mol][el] = Math.max(0, Math.floor(Number(inp.value) || 0));
+    });
+    const selX = q('select[data-axis="x"]');
+    const selY = q('select[data-axis="y"]');
+    if(selX) state.axisSelects.x = selX.value;
+    if(selY) state.axisSelects.y = selY.value;
+    state.orderR = q('#orderR')?.value || null;
+    state.orderP = q('#orderP')?.value || null;
+    return state;
+  }
+  function restoreState(state){
+    if(!state) return;
+    try{
+      if(state.coeffs){
+        Object.keys(state.coeffs).forEach(mol => {
+          const inp = q(`.coef[data-mol="${mol}"]`);
+          if(inp) inp.value = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(state.coeffs[mol] || 0))));
+        });
+      }
+      if(state.cells){
+        Object.keys(state.cells).forEach(mol => {
+          Object.keys(state.cells[mol]).forEach(el => {
+            const inp = q(`.cell[data-mol="${mol}"][data-elem="${el}"]`);
+            if(inp) inp.value = Math.max(0, Math.floor(Number(state.cells[mol][el] || 0)));
+          });
+        });
+      }
+      if(state.axisSelects){
+        if(state.axisSelects.x){
+          const sel = q('select[data-axis="x"]'); if(sel) sel.value = state.axisSelects.x;
+        }
+        if(state.axisSelects.y){
+          const sel = q('select[data-axis="y"]'); if(sel) sel.value = state.axisSelects.y;
+        }
+      }
+      if(state.orderR && q('#orderR')) q('#orderR').value = state.orderR;
+      if(state.orderP && q('#orderP')) q('#orderP').value = state.orderP;
+    }catch(e){ console.warn("restoreState: couldn't restore fully", e); }
+  }
+  function saveState(){ try{ const state = collectState(); localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){ console.warn("saveState failed", e); } }
+  let saveTimeout = null;
+  function saveStateDebounced(delay = 350){ if(saveTimeout) clearTimeout(saveTimeout); saveTimeout = setTimeout(() => { saveState(); saveTimeout = null; }, delay); }
+  function loadState(){ try{ const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return null; return JSON.parse(raw); }catch(e){ console.warn("loadState failed", e); return null; } }
+
+  // drawVectors (reads axes from selects)
+  function drawVectors(){
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    const defs = document.createElementNS("http://www.w3.org/2000/svg","defs");
+    const makeMarker = (id, color) => {
+      const marker = document.createElementNS("http://www.w3.org/2000/svg","marker");
+      marker.setAttribute("id", id);
+      marker.setAttribute("markerWidth", "6");
+      marker.setAttribute("markerHeight", "6");
+      marker.setAttribute("refX", "6");
+      marker.setAttribute("refY", "3");
+      marker.setAttribute("orient", "auto");
+      marker.setAttribute("markerUnits", "strokeWidth");
+      const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+      path.setAttribute("d", "M0,0 L6,3 L0,6 z");
+      path.setAttribute("fill", color);
+      marker.appendChild(path);
+      return marker;
+    };
+    defs.appendChild(makeMarker("arrowR","#5da0e8"));
+    defs.appendChild(makeMarker("arrowP","#e85d5d"));
+    svg.appendChild(defs);
+
+    const selX = q('select[data-axis="x"]');
+    const selY = q('select[data-axis="y"]');
+    const axes = { x: selX?.value || elements[0], y: selY?.value || elements[1] || elements[0] };
+
+    function readCountRaw(molId, elemName){
+      const inp = q(`.cell[data-mol="${molId}"][data-elem="${elemName}"]`);
+      return inp ? Math.max(0, Math.floor(Number(inp.value) || 0)) : 0;
+    }
+    function readCount(molId, elemName){ return readCountRaw(molId, elemName); }
+
+    const orderR = q('#orderR')?.value || 'auto';
+    const orderP = q('#orderP')?.value || 'auto';
+    function orderList(list, orderPref, defaultBehavior){
+      if(orderPref === 'none') return list.slice();
+      const withSize = list.map(m => ({m, size: moleculeSize(m)}));
+      if(orderPref === 'auto') orderPref = defaultBehavior;
+      if(orderPref === 'asc'){ withSize.sort((a,b) => a.size - b.size); }
+      else if(orderPref === 'desc'){ withSize.sort((a,b) => b.size - a.size); }
+      return withSize.map(x => x.m);
+    }
+    const reactantsOrdered = orderList(reactants, orderR, 'asc');
+    const productsOrdered  = orderList(products,  orderP, 'desc');
+
+    function buildCumulativePathByInstancesOrdered(molListOrdered){
+      const pts = []; let current = { x: 0, y: 0 }; pts.push({ x: current.x, y: current.y });
+      molListOrdered.forEach((mol) => {
+        const coefInput = q(`.coef[data-mol="${mol.id}"]`);
+        const coef = coefInput ? Math.max(0, Math.min(MAX_COEF, Math.floor(Number(coefInput.value) || 0))) : 0;
+        if(coef === 0) return;
+        const vx = readCount(mol.id, axes.x);
+        const vy = readCount(mol.id, axes.y);
+        for(let k = 0; k < coef; k++){
+          if(vx === 0 && vy === 0) continue;
+          const next = { x: current.x + vx, y: current.y + vy };
+          pts.push(next); current = next;
+        }
+      });
+      return pts;
+    }
+
+    const ptsR = buildCumulativePathByInstancesOrdered(reactantsOrdered);
+    const ptsP = buildCumulativePathByInstancesOrdered(productsOrdered);
+
+    const allPoints = []; ptsR.forEach(p => allPoints.push(p)); ptsP.forEach(p => allPoints.push(p)); allPoints.push({ x: 0, y: 0 });
+
+    const visibleReactants = reactantsOrdered.some(m => { const coef = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(q(`.coef[data-mol="${m.id}"]`)?.value || 0)))); const vx = readCount(m.id, axes.x); const vy = readCount(m.id, axes.y); return coef > 0 && (vx !== 0 || vy !== 0); });
+    const visibleProducts = productsOrdered.some(m => { const coef = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(q(`.coef[data-mol="${m.id}"]`)?.value || 0)))); const vx = readCount(m.id, axes.x); const vy = readCount(m.id, axes.y); return coef > 0 && (vx !== 0 || vy !== 0); });
+
+    const methodDefEl = document.getElementById('methodDef');
+    if(!visibleReactants || !visibleProducts){
+      drawFallbackGrid();
+      if(mappingNoteEl) mappingNoteEl.textContent = "Недостатньо даних для побудови обох шляхів: потрібен хоча б один видимий реагент і один видимий продукт.";
+      if(methodDefEl){ let note = methodDefEl.querySelector('.applicability-note'); if(!note){ note = document.createElement('div'); note.className = 'applicability-note'; note.style.marginTop = '8px'; note.style.color = '#8a2'; methodDefEl.appendChild(note);} note.textContent = 'Примітка: метод застосовний лише за умов, зазначених у правилах.'; }
+      const legend = document.getElementById('vectorLegend'); if(legend) legend.textContent = "Недостатньо видимих даних для повної візуалізації.";
+      return;
+    } else { if(mappingNoteEl) mappingNoteEl.textContent = ''; const note = methodDefEl && methodDefEl.querySelector('.applicability-note'); if(note) note.remove(); }
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    allPoints.forEach(p => { if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x; if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y; });
+    minX = Math.min(minX, 0); minY = Math.min(minY, 0);
+    minX = 0; minY = 0;
+    if(minX === maxX){ maxX = minX + MIN_AXIS_SPAN; }
+    if(minY === maxY){ maxY = minY + MIN_AXIS_SPAN; }
+    if((maxX - minX) < MIN_AXIS_SPAN) { maxX = minX + MIN_AXIS_SPAN; }
+    if((maxY - minY) < MIN_AXIS_SPAN) { maxY = minY + MIN_AXIS_SPAN; }
+
+    const spanX = maxX - minX; const spanY = maxY - minY;
+    const innerSize = svgSize - padding * 2;
+    const scaleX = innerSize / (maxX - minX);
+    const scaleY = innerSize / (maxY - minY);
+    const MAX_SCALE = 120; const MIN_SCALE = 4;
+    let scale = Math.min(scaleX, scaleY); scale = Math.min(scale, MAX_SCALE); scale = Math.max(scale, MIN_SCALE);
+    function worldToSvg(pt){ const x = padding + (pt.x - minX) * scale; const y = padding + (maxY - pt.y) * scale; return { x, y }; }
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    bg.setAttribute("x","0"); bg.setAttribute("y","0"); bg.setAttribute("width","520"); bg.setAttribute("height","520"); bg.setAttribute("fill","transparent");
+    svg.appendChild(bg);
+
+    const gridGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+    const intMinX = Math.ceil(minX); const intMaxX = Math.floor(maxX);
+    const intMinY = Math.ceil(minY); const intMaxY = Math.floor(maxY);
+    const totalGridPoints = Math.max(0, (intMaxX - intMinX + 1) * (intMaxY - intMinY + 1));
+    const maxDots = 800;
+    let sampleX = 1, sampleY = 1;
+    if(totalGridPoints > maxDots){ const factor = Math.sqrt(totalGridPoints / maxDots); sampleX = Math.ceil(factor); sampleY = Math.ceil(factor); }
+    for(let xi = intMinX; xi <= intMaxX; xi += sampleX){
+      for(let yi = intMinY; yi <= intMaxY; yi += sampleY){
+        const s = worldToSvg({ x: xi, y: yi });
+        const dot = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        dot.setAttribute("cx", s.x.toString()); dot.setAttribute("cy", s.y.toString()); dot.setAttribute("r", "1.6"); dot.setAttribute("fill", "#d9eefe");
+        gridGroup.appendChild(dot);
+      }
+    }
+    svg.appendChild(gridGroup);
+
+    const originSvg = worldToSvg({ x: 0, y: 0 });
+    const axesGroup = document.createElementNS("http://www.w3.org/2000/svg","g");
+    const axisX = document.createElementNS("http://www.w3.org/2000/svg","line");
+    axisX.setAttribute("x1", (padding).toString()); axisX.setAttribute("y1", originSvg.y.toString());
+    axisX.setAttribute("x2", (svgSize - padding).toString()); axisX.setAttribute("y2", originSvg.y.toString());
+    axisX.setAttribute("stroke","#79a9d9"); axisX.setAttribute("stroke-width","1.2");
+    axesGroup.appendChild(axisX);
+    const axisY = document.createElementNS("http://www.w3.org/2000/svg","line");
+    axisY.setAttribute("x1", originSvg.x.toString()); axisY.setAttribute("y1", (padding).toString());
+    axisY.setAttribute("x2", originSvg.x.toString()); axisY.setAttribute("y2", (svgSize - padding).toString());
+    axisY.setAttribute("stroke","#79a9d9"); axisY.setAttribute("stroke-width","1.2");
+    axesGroup.appendChild(axisY);
+
+    const targetTicks = 6;
+    const stepX = niceStep(spanX, targetTicks);
+    const stepY = niceStep(spanY, targetTicks);
+    const startX = Math.ceil(minX / stepX) * stepX;
+    const startY = Math.ceil(minY / stepY) * stepY;
+
+    for(let val = startX; val <= maxX; val += stepX){
+      if(val < minX) continue;
+      const s = worldToSvg({ x: val, y: minY });
+      const t = document.createElementNS("http://www.w3.org/2000/svg","line");
+      t.setAttribute("x1", s.x.toString()); t.setAttribute("y1", (originSvg.y - 4).toString());
+      t.setAttribute("x2", s.x.toString()); t.setAttribute("y2", (originSvg.y + 4).toString());
+      t.setAttribute("class", "svg-tick");
+      svg.appendChild(t);
+      const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x", s.x.toString()); lbl.setAttribute("y", (originSvg.y + 16).toString());
+      lbl.setAttribute("text-anchor", "middle");
+      lbl.setAttribute("class", "svg-axis-label");
+      lbl.textContent = Number.isInteger(val) ? String(val) : Number(val.toFixed(2));
+      svg.appendChild(lbl);
+    }
+    for(let val = startY; val <= maxY; val += stepY){
+      if(val < minY) continue;
+      const s = worldToSvg({ x: minX, y: val });
+      const t = document.createElementNS("http://www.w3.org/2000/svg","line");
+      t.setAttribute("x1", (originSvg.x - 4).toString()); t.setAttribute("y1", s.y.toString());
+      t.setAttribute("x2", (originSvg.x + 4).toString()); t.setAttribute("y2", s.y.toString());
+      t.setAttribute("class", "svg-tick");
+      svg.appendChild(t);
+      const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
+      lbl.setAttribute("x", (originSvg.x - 8).toString()); lbl.setAttribute("y", (s.y + 4).toString());
+      lbl.setAttribute("text-anchor", "end");
+      lbl.setAttribute("class", "svg-axis-label");
+      lbl.textContent = Number.isInteger(val) ? String(val) : Number(val.toFixed(2));
+      svg.appendChild(lbl);
+    }
+
+    svg.appendChild(axesGroup);
+
+    function drawSegmentsWithArrows(points, color, markerId, offsetSign){
+      if(!points || points.length < 2) return;
+      for(let i = 1; i < points.length; i++){
+        const aWorld = points[i-1]; const bWorld = points[i];
+        let a = worldToSvg(aWorld); let b = worldToSvg(bWorld);
+        const dx = b.x - a.x; const dy = b.y - a.y; const segLen = Math.hypot(dx, dy);
+        let ax = a.x, ay = a.y, bx = b.x, by = b.y;
+        if(segLen > 0.5){
+          const nx = -dy / segLen; const ny = dx / segLen; const offset = offsetSign * VISUAL_OFFSET_PX;
+          ax += nx * offset; ay += ny * offset; bx += nx * offset; by += ny * offset;
+        } else { ax += offsetSign * (VISUAL_OFFSET_PX * 0.5); bx += offsetSign * (VISUAL_OFFSET_PX * 0.5); }
+        if(Math.abs(ax - bx) < 0.4 && Math.abs(ay - by) < 0.4) continue;
+        const seg = document.createElementNS("http://www.w3.org/2000/svg","path");
+        seg.setAttribute("d", `M ${ax} ${ay} L ${bx} ${by}`);
+        seg.setAttribute("fill", "none"); seg.setAttribute("stroke", color); seg.setAttribute("stroke-width", "2"); seg.setAttribute("stroke-linecap", "round");
+        seg.setAttribute("marker-end", `url(#${markerId})`);
+        svg.appendChild(seg);
+        const dot = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        dot.setAttribute("cx", bx.toString()); dot.setAttribute("cy", by.toString()); dot.setAttribute("r", "1.8"); dot.setAttribute("fill", color);
+        svg.appendChild(dot);
+      }
+      const s0 = worldToSvg(points[0]);
+      let s0x = s0.x, s0y = s0.y;
+      if(points.length >= 2){ const next = worldToSvg(points[1]); const dxn = next.x - s0.x; const dyn = next.y - s0.y; const l = Math.hypot(dxn, dyn); if(l > 0.5){ const nx = -dyn / l; const ny = dxn / l; s0x += nx * offsetSign * VISUAL_OFFSET_PX; s0y += ny * offsetSign * VISUAL_OFFSET_PX; } } else { s0x += offsetSign * (VISUAL_OFFSET_PX * 0.5); }
+      const startCircle = document.createElementNS("http://www.w3.org/2000/svg","circle");
+      startCircle.setAttribute("cx", s0x.toString()); startCircle.setAttribute("cy", s0y.toString()); startCircle.setAttribute("r", "3.2"); startCircle.setAttribute("fill", "#fff"); startCircle.setAttribute("stroke", color); startCircle.setAttribute("stroke-width", "1.2");
+      svg.appendChild(startCircle);
+    }
+
+    const colorR = "#5da0e8"; const colorP = "#e85d5d";
+    drawSegmentsWithArrows(ptsR, colorR, "arrowR", -1);
+    drawSegmentsWithArrows(ptsP, colorP, "arrowP", +1);
+
+    const endR = ptsR.length ? ptsR[ptsR.length - 1] : {x:0,y:0};
+    const endP = ptsP.length ? ptsP[ptsP.length - 1] : {x:0,y:0};
+
+    const placedLabelRects = [];
+    const canvasLeft = 0, canvasTop = 0, canvasRight = svgSize, canvasBottom = svgSize;
+    function rectsIntersect(a,b){ return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom); }
+    function isInsideCanvas(rect){ return rect.left >= canvasLeft + 2 && rect.top >= canvasTop + 2 && rect.right <= canvasRight - 2 && rect.bottom <= canvasBottom - 2; }
+    const labelCandidates = [{dx:8, dy:4},{dx:8, dy:-14},{dx:-8, dy:4},{dx:-8, dy:-14},{dx:12, dy:0},{dx:-12, dy:0},{dx:0, dy:12},{dx:0, dy:-18}];
+
+    function placeTextAvoidOverlap(txtEl, baseX, baseY){
+      let chosenRect = null;
+      for(const c of labelCandidates){
+        txtEl.setAttribute('x', (baseX + c.dx).toString());
+        txtEl.setAttribute('y', (baseY + c.dy).toString());
+        const bb = txtEl.getBBox();
+        const rect = { left: bb.x, top: bb.y, right: bb.x + bb.width, bottom: bb.y + bb.height };
+        if(!isInsideCanvas(rect)) continue;
+        let ok = true;
+        for(const r of placedLabelRects){ if(rectsIntersect(rect, r)){ ok = false; break; } }
+        if(ok){ chosenRect = rect; break; }
+      }
+      if(!chosenRect){
+        const c = labelCandidates[labelCandidates.length - 1];
+        txtEl.setAttribute('x', (baseX + c.dx).toString());
+        txtEl.setAttribute('y', (baseY + c.dy).toString());
+        const bb = txtEl.getBBox();
+        chosenRect = { left: bb.x, top: bb.y, right: bb.x + bb.width, bottom: bb.y + bb.height };
+      }
+      placedLabelRects.push(chosenRect);
+    }
+
+    function createLabelAt(worldPt, labelText, color){
+      const svgPos = worldToSvg(worldPt);
+      const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+      const circ = document.createElementNS("http://www.w3.org/2000/svg","circle");
+      circ.setAttribute("cx", svgPos.x.toString()); circ.setAttribute("cy", svgPos.y.toString()); circ.setAttribute("r", "4.6"); circ.setAttribute("fill", "#fff"); circ.setAttribute("stroke", color); circ.setAttribute("stroke-width", "2");
+      g.appendChild(circ);
+      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
+      txt.setAttribute("font-size", "11"); txt.setAttribute("fill", "#214");
+      txt.textContent = labelText;
+      svg.appendChild(g); g.appendChild(txt);
+      placeTextAvoidOverlap(txt, svgPos.x + 8, svgPos.y + 4);
+    }
+
+    createLabelAt(endR, `R ${buildGrossFormula(reactantsOrdered)}`, colorR);
+    createLabelAt(endP, `P ${buildGrossFormula(productsOrdered)}`, colorP);
+
+    const eps = 1e-6;
+    const balanced = (Math.abs(endR.x - endP.x) <= eps) && (Math.abs(endR.y - endP.y) <= eps);
+    const legend = document.getElementById('vectorLegend');
+    if(legend){
+      if(balanced){ legend.textContent = `✅ Balanced — векторні підсумки реагентів та продуктів збігаються: (${endR.x}, ${endR.y}).`; }
+      else { legend.textContent = `❌ Not balanced — векторні підсумки різні. End_R = (${endR.x}, ${endR.y}), End_P = (${endP.x}, ${endP.y}).`; }
+    }
+
+    let sumR_x = 0, sumR_y = 0, sumP_x = 0, sumP_y = 0;
+    reactants.forEach(m => { const coef = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(q(`.coef[data-mol="${m.id}"]`)?.value || 0)))); sumR_x += (function(){ const input = q(`.cell[data-mol="${m.id}"][data-elem="${axes.x}"]`); return input ? Math.max(0, Math.floor(Number(input.value)||0)) : 0; })() * coef; sumR_y += (function(){ const input = q(`.cell[data-mol="${m.id}"][data-elem="${axes.y}"]`); return input ? Math.max(0, Math.floor(Number(input.value)||0)) : 0; })() * coef; });
+    products.forEach(m => { const coef = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(q(`.coef[data-mol="${m.id}"]`)?.value || 0)))); sumP_x += (function(){ const input = q(`.cell[data-mol="${m.id}"][data-elem="${axes.x}"]`); return input ? Math.max(0, Math.floor(Number(input.value)||0)) : 0; })() * coef; sumP_y += (function(){ const input = q(`.cell[data-mol="${m.id}"][data-elem="${axes.y}"]`); return input ? Math.max(0, Math.floor(Number(input.value)||0)) : 0; })() * coef; });
+    const rpProjX = sumR_x - sumP_x; const rpProjY = sumR_y - sumP_y;
+    if(mappingNoteEl){
+      mappingNoteEl.innerHTML = `<div><b>Проєкція (осі ${selX?.value || ''}, ${selY?.value || ''}):</b></div>
+        <div>R−P (з урахуванням коефіцієнтів) = (${rpProjX}, ${rpProjY}) = End_R − End_P (геометрично)</div>
+        <div style="color:#665; margin-top:4px;">Примітка: у візуалізації кожна молекула з коефіцієнтом k відтворюється як k окремих сегментів.</div>`;
+    }
+
+    saveStateDebounced();
+  }
+
+  function buildGrossFormula(molList){
+    const acc = {};
+    elements.forEach(el => acc[el] = 0);
+    molList.forEach(m => {
+      const coef = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(q(`.coef[data-mol="${m.id}"]`)?.value || 0))));
+      if(coef === 0) return;
+      elements.forEach(el => {
+        const input = q(`.cell[data-mol="${m.id}"][data-elem="${el}"]`);
+        const val = input ? Math.max(0, Math.floor(Number(input.value) || 0)) : 0;
+        acc[el] += val * coef;
+      });
+    });
+    const parts = [];
+    for(const el of elements){ if(acc[el] > 0) parts.push(`${el}${acc[el] > 1 ? acc[el] : ''}`); }
+    return parts.length ? `(${parts.join(',')})` : `(—)`;
+  }
+
+  function drawFallbackGrid(){
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    const inner = svgSize - padding * 2;
+    const step = inner / 10;
+    for(let i=0;i<=10;i++){
+      for(let j=0;j<=10;j++){
+        const x = padding + i * step;
+        const y = padding + (10 - j) * step;
+        const dot = document.createElementNS("http://www.w3.org/2000/svg","circle");
+        dot.setAttribute("cx", x.toString()); dot.setAttribute("cy", y.toString()); dot.setAttribute("r", "2"); dot.setAttribute("fill", "#d9eefe");
+        svg.appendChild(dot);
+      }
+    }
+    const axisX = document.createElementNS("http://www.w3.org/2000/svg","line");
+    axisX.setAttribute("x1", padding.toString()); axisX.setAttribute("y1", (svgSize - padding).toString()); axisX.setAttribute("x2", (svgSize - padding).toString()); axisX.setAttribute("y2", (svgSize - padding).toString()); axisX.setAttribute("stroke","#79a9d9"); axisX.setAttribute("stroke-width","1.5"); svg.appendChild(axisX);
+    const axisY = document.createElementNS("http://www.w3.org/2000/svg","line");
+    axisY.setAttribute("x1", padding.toString()); axisY.setAttribute("y1", padding.toString()); axisY.setAttribute("x2", padding.toString()); axisY.setAttribute("y2", (svgSize - padding).toString()); axisY.setAttribute("stroke","#79a9d9"); axisY.setAttribute("stroke-width","1.5"); svg.appendChild(axisY);
+  }
+
+  function buildEquation(){
+    const leftParts = [];
+    reactants.forEach(m => {
+      const coefInput = document.querySelector(`.coef[data-mol="${m.id}"]`);
+      const coef = coefInput ? Math.max(0, Math.min(MAX_COEF, Math.floor(Number(coefInput.value) || 0))) : 0;
+      if(coef === 0) return;
+      const formula = buildFormulaHTML(m.id); leftParts.push((coef>1?coef:'') + formula);
+    });
+    const rightParts = [];
+    products.forEach(m => {
+      const coefInput = document.querySelector(`.coef[data-mol="${m.id}"]`);
+      const coef = coefInput ? Math.max(0, Math.min(MAX_COEF, Math.floor(Number(coefInput.value) || 0))) : 0;
+      if(coef === 0) return;
+      const formula = buildFormulaHTML(m.id); rightParts.push((coef>1?coef:'') + formula);
+    });
+    const joiner = ' <span style="color:#666; font-weight:600">+</span> ';
+    const leftHTML = leftParts.length ? leftParts.join(joiner) : '<span style="color:#999">—</span>';
+    const rightHTML = rightParts.length ? rightParts.join(joiner) : '<span style="color:#999">—</span>';
+    document.getElementById("equation").innerHTML = `<div class="formula-part">${leftHTML}</div><div style="font-weight:700; padding:0 8px"> = </div><div class="formula-part">${rightHTML}</div>`;
+  }
+
+  function onChangeHandler(){
+    qAll('.coef').forEach(coefEl => { coefEl.value = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(coefEl.value) || 0))); });
+    [...reactants, ...products].forEach(m => { const nameEl = document.getElementById(`name_${m.id}`); if(nameEl) nameEl.innerHTML = buildFormulaHTML(m.id); });
+    buildEquation(); updateDifference(); drawVectors();
+  }
+
+  qAll("input.num").forEach(inp => inp.addEventListener("input", onChangeHandler));
+  qAll("input.coef").forEach(inp => { inp.addEventListener("input", () => { inp.value = Math.max(0, Math.min(MAX_COEF, Math.floor(Number(inp.value) || 0))); onChangeHandler(); }); });
+
+  q('#orderR')?.addEventListener('change', () => drawVectors());
+  q('#orderP')?.addEventListener('change', () => drawVectors());
+
+  const saved = loadState();
+  if(saved) { restoreState(saved); }
+
+  [...reactants, ...products].forEach(m => {
+    const coef = document.querySelector(`.coef[data-mol="${m.id}"]`);
+    const any = elements.some(el => { const cell = document.querySelector(`.cell[data-mol="${m.id}"][data-elem="${el}"]`); return cell && Number(cell.value) > 0; });
+    if(coef) coef.value = any ? (coef.value || 1) : 0;
+  });
+
+  buildEquation();
+  updateDifference();
+  drawVectors();
+  window.addEventListener('resize', () => drawVectors());
+});
+</script>
+
+</body>
+</html>
