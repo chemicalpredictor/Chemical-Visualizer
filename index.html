@@ -83,7 +83,7 @@
   <!-- INPUT PANEL: paste a balanced equation here -->
   <div class="parse-panel" aria-label="Load balanced equation">
     <div style="font-size:13px; color:#444; align-self:center; display:flex; flex-direction:column; max-width:400px;">
-      <b>Вставте збалансовані рівняння:</b>
+      <b>Вставте рівняння:</b>
       <span style="font-size:11px; color:#555; margin-top:4px;">Вводити можна безліч, але лише одне під одним через enter. Перше йде і в табличку і на графік, а інші (починаючи з другого) відображаються тільки на графіку. Рівняння, починаючи з другого, відображаються світлішими відтінками (світло-синім та світло-червоним), щоб не перевантажувати і не плутатись із першим рівнянням у таблиці.</span>
     </div>
     <textarea id="parsedInput" placeholder="Напр.: 2 H2 + O2 = 2 H2O&#10;C + O2 = CO2"></textarea>
@@ -1093,7 +1093,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const lines = txt.split('\n').map(l => l.trim()).filter(l => l);
-    if(lines.length === 0){ alert("Вставте збалансоване рівняння."); return; }
+    if(lines.length === 0){ alert("Вставте рівняння."); return; }
 
     const normalizedFirst = lines[0].replace(/\s+/g, '').replace(/→/g, '=');
 
